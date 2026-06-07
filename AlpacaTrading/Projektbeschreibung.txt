@@ -1,0 +1,371 @@
+================================================================================
+  PROJEKTBESCHREIBUNG – AKTUELLER STAND (Schritte 1–3)
+  BTC/USD Volatilitätsbasierte Regime-Klassifikation & Automatisiertes Trading
+================================================================================
+
+Datum:        Juni 2026
+Technologie:  Python 3.13, alpaca-py, pandas, numpy, matplotlib, seaborn, scikit-learn
+Datenquelle:  Alpaca Markets Crypto Historical Data API
+Zielasset:    BTC/USD (Bitcoin gegen US-Dollar)
+
+
+────────────────────────────────────────────────────────────────────────────────
+1. PROJEKTZIEL
+────────────────────────────────────────────────────────────────────────────────
+
+Ziel dieses Projekts ist die Entwicklung eines vollständigen, datengetriebenen
+Handelssystems für Bitcoin (BTC/USD). Das System soll mithilfe von Machine
+Learning den aktuellen Marktregimezustand erkennen und daraus automatisch
+Handelssignale ableiten, die über die Alpaca API als echte Orders ausgeführt
+werden.
+
+Der Kern des Systems ist ein Klassifikationsmodell, das den Markt in fünf
+verschiedene Regime einteilt – von ruhigen, trendlosen Phasen bis hin zu
+explosiven Ausbrüchen in beide Richtungen. Aus jedem Regime ergibt sich eine
+eindeutige Handlungsempfehlung: Kaufen, Verkaufen oder Abwarten.
+
+Das Projekt orientiert sich in seiner Struktur an professionellen Data-Science-
+Workflows: Jeder Schritt ist ein eigenständiges Python-Script, das eine klar
+definierte Aufgabe erfüllt, seine Eingaben aus vorherigen Schritten lädt und
+seine Ausgaben dokumentiert speichert.
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. DATENQUELLE UND DATENBESCHAFFUNG (Schritt 1 – 01_data_acquisition.py)
+────────────────────────────────────────────────────────────────────────────────
+
+QUELLE
+Die Rohdaten stammen von der Alpaca Markets Crypto Historical Data API.
+Alpaca ist ein regulierter US-Broker, der eine kostenfreie REST-API für
+historische Marktdaten bereitstellt. Für Kryptowährungen sind stündliche
+OHLCV-Bars (Open, High, Low, Close, Volume) ohne zusätzliche Kosten abrufbar.
+
+ABGERUFENER ZEITRAUM
+    Start:  01. Juli 2022
+    Ende:   01. Juni 2025
+    Dies entspricht knapp 3 Jahren historischer Marktdaten und deckt mehrere
+    vollständige Marktzyklen ab – einschließlich des FTX-Crashs (November 2022),
+    der Bitcoin-ETF-Zulassung (Januar 2024), des Bitcoin-Halvings (April 2024)
+    sowie des Post-Election-Rallys nach der US-Wahl (November 2024).
+
+ZEITGRANULARITÄT
+    Stündliche Bars (TimeFrame.Hour)
+    Jede Zeile repräsentiert eine Handelsstunde und enthält:
+        - open:        Eröffnungspreis der Stunde
+        - high:        Höchstkurs innerhalb der Stunde
+        - low:         Tiefstkurs innerhalb der Stunde
+        - close:       Schlusskurs der Stunde
+        - volume:      Gehandeltes Volumen in BTC
+        - trade_count: Anzahl der Einzeltransaktionen in dieser Stunde
+        - vwap:        Volume Weighted Average Price (volumengewichteter Durchschnittskurs)
+
+UMFANG DER ROHDATEN
+    ca. 33.600 Zeilen × 7 Spalten
+    Dies entspricht ca. 1.400 Handelstagen zu je 24 Stunden.
+
+SPEICHERORT
+    data/raw_data.csv
+
+VERARBEITUNG
+    Der von der API zurückgegebene DataFrame besitzt einen mehrstufigen Index
+    (MultiIndex) der sowohl das Symbol ("BTC/USD") als auch den Timestamp
+    enthält. Dieser wird bereinigt: Das Symbol-Level wird entfernt, der Index
+    wird als reiner datetime-Index gesetzt, timezone-Informationen werden
+    normalisiert (UTC → naive), und der DataFrame wird chronologisch sortiert.
+    Es findet keine inhaltliche Bereinigung oder Feature-Berechnung statt –
+    das Script liefert ausschließlich saubere Rohdaten.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. EXPLORATIVE DATENANALYSE (Schritt 2 – 02_data_understanding.py)
+────────────────────────────────────────────────────────────────────────────────
+
+Dieser Schritt dient dem Verständnis der Rohdaten. Es werden keine Veränderungen
+an den Daten vorgenommen – ausschließlich Visualisierung und statistische Analyse.
+Alle Plots werden in artifacts/images/ gespeichert.
+
+PLOT 1 – Kompletter Preisverlauf (step2_price_history.png)
+    Liniendiagramm des stündlichen BTC/USD Schlusskurses über den gesamten
+    Zeitraum 2022–2025. Vier wichtige Marktereignisse sind als vertikale
+    Linien eingezeichnet und beschriftet:
+        - November 2022: FTX Crash – Zusammenbruch der zweitgrößten
+          Kryptobörse weltweit, führte zu einem Preisverfall auf unter 16.000 USD
+        - Januar 2024: Bitcoin ETF Approved – Die US-Börsenaufsicht SEC genehmigte
+          erstmals Spot-Bitcoin-ETFs, was institutionellen Kapitalzufluss ermöglichte
+        - April 2024: Bitcoin Halving – Die Blockbelohnung für Bitcoin-Miner wurde
+          halbiert, historisch ein bullisches Ereignis für den Preis
+        - November 2024: Post-Election Rally – Nach der US-Präsidentschaftswahl
+          stieg BTC innerhalb weniger Wochen auf über 100.000 USD
+
+PLOT 2 – Zoom Post-Election Rally (step2_price_zoomed.png)
+    Detailansicht des Zeitraums Oktober 2024 bis Januar 2025. Zeigt die
+    explosive Preisbewegung nach der US-Wahl im Detail – innerhalb von
+    6 Wochen verdoppelte sich der Bitcoin-Preis nahezu.
+
+PLOT 3 – Renditeverteilung (step2_returns_distribution.png)
+    Histogramm der stündlichen prozentualen Preisveränderungen mit einer
+    theoretischen Normalverteilungskurve als Vergleich. Das Diagramm zeigt
+    das sogenannte "Fat Tail"-Phänomen: Bitcoin-Returns sind deutlich
+    häufiger in extremen Bereichen (große Gewinne oder Verluste) als eine
+    Normalverteilung vorhersagen würde. Dies wird durch hohe Kurtosis-Werte
+    bestätigt und ist charakteristisch für Kryptowährungen. Diese Eigenschaft
+    macht Volatilitätsregime-Modelle besonders wertvoll, da extreme Bewegungen
+    vorhersehbarer sind als bei normalverteilten Assets.
+
+PLOT 4 – Monatliche Durchschnittspreise (step2_monthly_avg.png)
+    Durchschnittlicher Schlusskurs pro Monat, nach Jahr eingefärbt. Ermöglicht
+    einen direkten Jahresvergleich und zeigt die langfristige Preisentwicklung
+    sowie saisonale Muster.
+
+PLOT 5 – Volumenanalyse (step2_volume.png)
+    Zwei übereinanderliegende Diagramme: oben der Preisverlauf, unten das
+    tägliche Handelsvolumen als Balkendiagramm. Hohe Volumenausschläge
+    korrelieren oft mit starken Preisbewegungen und sind ein Zeichen erhöhter
+    Marktaktivität – relevant für die Volumen-Features in Schritt 3.
+
+PLOT 6 – Volatilitäts-Cluster (step2_volatility.png)
+    Rollende 24h-Standardabweichung der stündlichen Returns. Das Diagramm
+    visualisiert das ARCH-Phänomen (Autoregressive Conditional Heteroskedasticity):
+    Volatilität tritt in Clustern auf – ruhige Phasen wechseln sich mit
+    explosiven Phasen ab. Dieses Muster ist die Grundlage des gesamten
+    Regime-Konzepts. Die 33. und 66. Perzentile sind als Linien eingezeichnet
+    und zeigen die späteren Regime-Grenzen.
+
+PLOT 7 – Fehlende Werte (step2_missing_values.png)
+    Balkendiagramm der fehlenden Werte pro Spalte. Zeigt die Vollständigkeit
+    der API-Daten und hilft, problematische Spalten frühzeitig zu identifizieren.
+
+STATISTISCHE KENNZAHLEN
+    Zusätzlich zu den Plots werden im Terminal ausgegeben:
+        - Vollständige deskriptive Statistik (mean, std, min, max, Quartile)
+        - Fehlende Werte pro Spalte
+        - Return-Statistiken (Mittelwert, Standardabweichung, Schiefe, Kurtosis)
+        - Datum des höchsten Handelsvolumens
+        - Maximaler Drawdown im gesamten Zeitraum
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. FEATURE ENGINEERING & ZIELVARIABLE (Schritt 3 – 03_pre_split_prep.py)
+────────────────────────────────────────────────────────────────────────────────
+
+Dies ist der zentrale Verarbeitungsschritt. Aus den Rohdaten werden alle
+erklärenden Variablen (Features) und die Zielvariable berechnet, die das
+Machine-Learning-Modell in späteren Schritten benötigt.
+
+NO-LEAKAGE-PRINZIP
+    Alle Features werden ausschließlich aus Vergangenheitsdaten berechnet.
+    Wo nötig wird .shift(1) verwendet, damit die aktuelle, noch nicht
+    abgeschlossene Kerze nicht in die Berechnung einfließt. Dies ist
+    entscheidend für die Validität des Modells: Ein Modell das zukünftige
+    Daten sieht (Data Leakage) würde im Backtest hervorragend abschneiden,
+    aber im Live-Einsatz versagen.
+
+ZIELVARIABLE – REGIME (0–4)
+    Die Zielvariable wird zweistufig konstruiert:
+
+    Stufe 1 – Volatilitätsniveau:
+        Die rollende 24h-Standardabweichung der Returns wird berechnet.
+        Die Gesamtverteilung wird in drei Zonen aufgeteilt:
+            Low Vol:    unterhalb des 33. Perzentils
+            Medium Vol: zwischen 33. und 66. Perzentil
+            High Vol:   oberhalb des 66. Perzentils
+
+    Stufe 2 – Preisrichtung:
+        Die 6h-Preisveränderung (pct_change(6)) gibt die Richtung an:
+            >= 0: Aufwärts
+             < 0: Abwärts
+
+    Kombination zu 5 Klassen:
+        Regime 0 – Low Vol (Aufwärts oder Abwärts)  → HOLD
+        Regime 1 – Medium Vol + Aufwärts             → BUY
+        Regime 2 – Medium Vol + Abwärts              → SELL
+        Regime 3 – High Vol + Aufwärts               → STRONG BUY
+        Regime 4 – High Vol + Abwärts                → STRONG SELL
+
+FEATURE-GRUPPE 1 – Preis-Lags
+    Vergangene Schlusskurse als direkte Referenzpunkte:
+        lag_1   = Kurs vor 1 Stunde
+        lag_6   = Kurs vor 6 Stunden
+        lag_24  = Kurs vor 24 Stunden (gestern zur gleichen Zeit)
+        lag_168 = Kurs vor 168 Stunden (letzte Woche zur gleichen Zeit)
+    Diese Features geben dem Modell ein Gedächtnis und ermöglichen es,
+    relative Preisveränderungen über verschiedene Zeiträume zu erkennen.
+
+FEATURE-GRUPPE 2 – Rolling Returns
+    Prozentuale Preisveränderungen über verschiedene Rückblickperioden:
+        return_1   = Rendite der letzten Stunde
+        return_6   = Rendite der letzten 6 Stunden
+        return_24  = Rendite der letzten 24 Stunden
+        return_168 = Rendite der letzten Woche
+    Misst Momentum auf verschiedenen Zeitskalen.
+
+FEATURE-GRUPPE 3 – Volatilität
+    Rollende Standardabweichung der Returns:
+        volatility_6   = Volatilität der letzten 6 Stunden
+        volatility_24  = Volatilität der letzten 24 Stunden (Kernfeature)
+        volatility_168 = Volatilität der letzten Woche
+    Diese Gruppe ist direkt mit der Zielvariable verknüpft und gehört zu
+    den wichtigsten Features für die Regime-Erkennung.
+
+FEATURE-GRUPPE 4 – EMA Ribbon
+    Sechs exponentiell gewichtete Mittelwerte (EMA) unterschiedlicher Länge:
+        EMA_6, EMA_12, EMA_18, EMA_24, EMA_50, EMA_100
+    Ein EMA gewichtet neuere Kurse stärker als ältere und reagiert damit
+    schneller auf Preisveränderungen als ein einfacher Mittelwert.
+    Zusätzlich:
+        ribbon_spread      = EMA_6 minus EMA_50 (absolute Divergenz)
+        ribbon_spread_norm = Spread normalisiert durch den aktuellen Preis
+        ribbon_bull        = 1 wenn kurze EMAs alle größer als lange EMAs
+                             (klarer Aufwärtstrend)
+        ribbon_bear        = 1 wenn kurze EMAs alle kleiner als lange EMAs
+                             (klarer Abwärtstrend)
+    Ein geordnetes bullisches Ribbon gilt als eines der stärksten Trendzeichen.
+
+FEATURE-GRUPPE 5 – Simple Moving Averages (SMA)
+    Einfache arithmetische Mittelwerte:
+        SMA_12, SMA_24, SMA_50
+        price_vs_SMA50 = Prozentuale Abweichung des Preises vom SMA50
+    Zeigt wie weit der Preis von seinem mittelfristigen Gleichgewicht entfernt ist.
+
+FEATURE-GRUPPE 6 – MACD
+    Moving Average Convergence Divergence – klassischer Trendfolge-Indikator:
+        MACD         = EMA_12 minus EMA_26
+        MACD_signal  = 9-Perioden EMA des MACD
+        MACD_hist    = MACD minus Signal (Histogramm)
+        MACD_hist_change = Veränderung des Histogramms gegenüber Vorperiode
+    Crossover-Signale (Leakage-frei):
+        macd_cross_up   = 1 wenn MACD in dieser Kerze Signal von unten kreuzt
+        macd_cross_down = 1 wenn MACD in dieser Kerze Signal von oben kreuzt
+    Crossovers gelten als Kauf- bzw. Verkaufssignale.
+
+FEATURE-GRUPPE 7 – RSI
+    Relative Strength Index (14 Perioden):
+        RSI = 100 − (100 / (1 + Durchschnittlicher Gewinn / Durchschnittlicher Verlust))
+    Wertebereiche:
+        < 30:  Überverkauft → potenzielle Kaufgelegenheit (rsi_oversold = 1)
+        > 70:  Überkauft    → potenzielle Verkaufsgelegenheit (rsi_overbought = 1)
+        30–70: Neutral (rsi_neutral = 1)
+    Der RSI ist ein Momentum-Oszillator und zeigt an, ob eine Bewegung
+    übertrieben erscheint und mit einer Gegenbewegung zu rechnen ist.
+
+FEATURE-GRUPPE 8 – Bollinger Bands
+    Volatilitäts-basierte Preishülle (20 Perioden, 2 Standardabweichungen):
+        BB_middle = SMA_20
+        BB_upper  = SMA_20 + (2 × Standardabweichung)
+        BB_lower  = SMA_20 − (2 × Standardabweichung)
+        BB_width  = Bandbreite normalisiert durch Mittellinie
+        BB_pos    = Position des Preises zwischen unterem (0) und oberem (1) Band
+        BB_squeeze = 1 wenn Bandbreite enger als ihr 24h-Durchschnitt
+    Der BB_squeeze ist besonders wertvoll: Enge Bänder (niedrige Volatilität)
+    kündigen oft einen bevorstehenden Ausbruch an – also einen Regime-Wechsel.
+
+FEATURE-GRUPPE 9 – Volumen
+    Volumens-basierte Aktivitätsindikatoren:
+        volume_ma_24  = 24h Durchschnittsvolumen
+        volume_ratio  = Aktuelles Volumen geteilt durch 24h Durchschnitt
+        volume_surge  = 1 wenn Volumen mehr als doppelt so hoch wie Durchschnitt
+    Außergewöhnlich hohes Volumen bestätigt Preisbewegungen und signalisiert
+    erhöhtes Marktinteresse – oft ein Zeichen für Regime 3 oder 4.
+
+FEATURE-GRUPPE 10 – Support & Resistance
+    Marktstruktur-Features basierend auf historischen Preisniveaus:
+
+    Rolling High/Low:
+        rolling_high_24  = Höchstkurs der letzten 24 Stunden (shift=1)
+        rolling_low_24   = Tiefstkurs der letzten 24 Stunden (shift=1)
+        rolling_high_168 = Höchstkurs der letzten Woche (shift=1)
+        rolling_low_168  = Tiefstkurs der letzten Woche (shift=1)
+
+    Normalisierte Abstände zu diesen Levels:
+        dist_to_high_24, dist_to_low_24
+        dist_to_high_168, dist_to_low_168
+
+    Pivot Points (klassische technische Analyse):
+        pivot = (High + Low + Close der Vorkerze) / 3
+        R1    = 2 × Pivot − Low (erster Widerstand)
+        S1    = 2 × Pivot − High (erste Unterstützung)
+        dist_pivot, dist_R1, dist_S1 = normalisierte Abstände
+
+    Psychologische Level:
+        round_level   = Nächstes rundes 5.000er-Level (z.B. 60.000, 65.000 USD)
+        dist_to_round = Abstand zu diesem Level
+    Runde Zahlen wirken als Magnete und Barrieren im Markt.
+
+FEATURE-GRUPPE 11 – Zeitliche Features (zyklisch kodiert)
+    Zeitstempel-basierte Features für saisonale Muster:
+        hour, dow (Wochentag), month
+    Alle zyklisch kodiert mit Sinus und Kosinus:
+        hour_sin, hour_cos   (Stunde im 24h-Zyklus)
+        dow_sin,  dow_cos    (Wochentag im 7-Tage-Zyklus)
+        month_sin, month_cos (Monat im 12-Monats-Zyklus)
+    Die zyklische Kodierung ist notwendig weil lineare Kodierung falsche
+    Abstände implizieren würde (Stunde 23 und Stunde 0 sind nah beieinander,
+    nicht weit entfernt). Das Modell kann so Muster lernen wie:
+    "In den frühen Morgenstunden UTC ist der Markt tendenziell ruhiger."
+
+BEREINIGUNG
+    Durch die langen Rolling Windows (bis zu 168 Stunden) entstehen am Anfang
+    des Datensatzes NaN-Werte. Diese Zeilen werden entfernt.
+    Ergebnis: von ~33.600 Rohdaten-Zeilen bleiben ~33.400 saubere Zeilen.
+
+SPEICHERORT
+    data/features.csv
+    ca. 33.400 Zeilen × ~60 Spalten
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. ERZEUGTE DATEIEN – GESAMTÜBERSICHT (Stand nach Schritt 1–3)
+────────────────────────────────────────────────────────────────────────────────
+
+Daten:
+    data/raw_data.csv          – Rohdaten von Alpaca API (~33.600 Zeilen, 7 Spalten)
+    data/features.csv          – Feature-Engineering Ergebnis (~33.400 Zeilen, ~60 Spalten)
+
+Plots:
+    artifacts/images/step2_price_history.png        – Kompletter Preisverlauf 2022–2025
+    artifacts/images/step2_price_zoomed.png         – Zoom Post-Election Rally
+    artifacts/images/step2_returns_distribution.png – Renditeverteilung mit Fat Tails
+    artifacts/images/step2_monthly_avg.png          – Monatliche Durchschnittspreise
+    artifacts/images/step2_volume.png               – Preis + Volumen
+    artifacts/images/step2_volatility.png           – Volatilitäts-Cluster
+    artifacts/images/step2_missing_values.png       – Fehlende Werte
+    artifacts/images/step3_feature_examples.png     – Technische Indikatoren visualisiert
+    artifacts/images/step3_regime_distribution.png  – Verteilung der 5 Regime-Klassen
+
+Scripts:
+    scripts/01_data_acquisition.py   – API-Abruf und Speicherung der Rohdaten
+    scripts/02_data_understanding.py – Explorative Datenanalyse und Visualisierung
+    scripts/03_pre_split_prep.py     – Feature Engineering und Zielvariable
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. NÄCHSTE SCHRITTE (Schritt 4 und folgende)
+────────────────────────────────────────────────────────────────────────────────
+
+Schritt 4 – Train/Test-Split:
+    Die features.csv wird chronologisch aufgeteilt (kein zufälliger Split,
+    da Zeitreihendaten Autokorrelation aufweisen). Typisch: 80% Training
+    (2022–2024), 20% Test (2024–2025).
+
+Schritt 5 – Modelltraining:
+    Ein Klassifikationsmodell (z.B. Random Forest, XGBoost oder LightGBM)
+    wird auf dem Trainingsdatensatz trainiert. Da die Regime-Klassen
+    unbalanciert sind (Regime 0 häufiger als 3 oder 4), wird mit
+    class_weight='balanced' oder Oversampling-Techniken gearbeitet.
+
+Schritt 6 – Evaluation:
+    Das trainierte Modell wird auf dem Testdatensatz evaluiert:
+    Accuracy, F1-Score pro Klasse, Confusion Matrix.
+    Besonderer Fokus: Wie gut erkennt das Modell Regime 3 und 4?
+
+Schritt 7 – Backtesting:
+    Die Regime-Vorhersagen werden in eine Handelsstrategie umgewandelt
+    und historisch simuliert. Kennzahlen: Gesamtrendite, Sharpe Ratio,
+    maximaler Drawdown.
+
+Schritt 8 – Live-Deployment via Alpaca API:
+    Das fertige Modell wird in einen Echtzeit-Trading-Loop integriert,
+    der stündlich neue Bars abruft, Features berechnet, das Regime
+    klassifiziert und entsprechende Orders über die Alpaca API ausführt.
+
+================================================================================
